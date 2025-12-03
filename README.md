@@ -65,7 +65,5 @@ Tendencia de facturación a lo largo del tiempo, utilizando una columna derivada
 - `seaborn`
 - GitHub Codespaces
 
----
 
-## 📁 Estructura del repositorio
 
