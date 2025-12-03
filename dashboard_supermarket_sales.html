@@ -1,117 +1,134 @@
-import pandas as pd
-import plotly.express as px
-from plotly.subplots import make_subplots
-import plotly.graph_objects as go
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard Supermarket Sales</title>
 
-# ============================
-# 1) CARGA DEL DATASET
-# ============================
-df = pd.read_csv("supermarket_sales.csv")
+    <!-- Cargar Plotly -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 
-# ============================
-# 2) CONVERSIÓN DE FECHAS
-# ============================
-df["Date"] = pd.to_datetime(df["Date"])
-df["YearMonth"] = df["Date"].dt.to_period("M").astype(str)
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f4f4f4;
+        }
+        h1 {
+            text-align: center;
+        }
+        .chart-container {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
 
-# ============================
-# 3) CONTROL DE NULOS
-# ============================
-print("Nulos por columna:")
-print(df.isnull().sum())
+<body>
 
-# El dataset NO tiene nulos → resultado esperado: todo en 0
+    <h1>Dashboard — Supermarket Sales</h1>
 
-# ============================
-# 4) CREACIÓN DEL DASHBOARD
-# ============================
+    <!-- Contenedores de gráficos -->
+    <div class="chart-container"><div id="chart1"></div></div>
+    <div class="chart-container"><div id="chart2"></div></div>
+    <div class="chart-container"><div id="chart3"></div></div>
+    <div class="chart-container"><div id="chart4"></div></div>
 
-# Creamos un layout de 2 filas x 2 columnas
-fig = make_subplots(
-    rows=2, cols=2,
-    subplot_titles=(
-        "Top 3 Product Lines",
-        "Facturación por Ciudad",
-        "Ticket Promedio",
-        "Curva Mensual de Ventas"
-    )
-)
+    <script>
+        // ==========================
+        // Cargar dataset (CSV en GitHub)
+        // ==========================
 
-# --------------------------
-# GRÁFICO 1 – TOP 3 PRODUCT LINES
-# --------------------------
-top3 = (
-    df.groupby("Product line")["Total"]
-    .sum()
-    .sort_values(ascending=False)
-    .head(3)
-)
+        const URL_CSV = "supermarket_sales.csv"; 
+        // Si subís el archivo a GitHub Pages, poner:
+        // const URL_CSV = "https://Guillermina0406.github.io/Supermarket_Sales/supermarket_sales.csv"
 
-fig.add_trace(
-    go.Bar(
-        x=top3.index,
-        y=top3.values,
-        name="Top 3 Product Lines"
-    ),
-    row=1, col=1
-)
+        Plotly.d3.csv(URL_CSV, function(err, rawData) {
+            if (err) {
+                console.error("Error al cargar CSV", err);
+                return;
+            }
 
-# --------------------------
-# GRÁFICO 2 – FACTURACIÓN POR CIUDAD
-# --------------------------
-city_rev = df.groupby("City")["Total"].sum()
+            // Convertir datos
+            const df = rawData.map(d => ({
+                ...d,
+                Total: parseFloat(d.Total),
+                Date: new Date(d.Date)
+            }));
 
-fig.add_trace(
-    go.Bar(
-        x=city_rev.index,
-        y=city_rev.values,
-        name="Revenue by City"
-    ),
-    row=1, col=2
-)
+            // ===============================
+            // 1) TOP 3 PRODUCT LINES
+            // ===============================
+            let totals = {};
+            df.forEach(d => {
+                totals[d["Product line"]] = (totals[d["Product line"]] || 0) + d.Total;
+            });
 
-# --------------------------
-# GRÁFICO 3 – TICKET PROMEDIO
-# --------------------------
-avg_ticket = df["Total"].mean()
+            let sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
-fig.add_trace(
-    go.Indicator(
-        mode="number",
-        value=avg_ticket,
-        title={"text": "Ticket Promedio"}
-    ),
-    row=2, col=1
-)
+            Plotly.newPlot("chart1", [{
+                type: "bar",
+                x: sorted.map(d => d[0]),
+                y: sorted.map(d => d[1])
+            }], {
+                title: "Top 3 Product Lines"
+            });
 
-# --------------------------
-# GRÁFICO 4 – CURVA MENSUAL DE VENTAS
-# --------------------------
-monthly = df.groupby("YearMonth")["Total"].sum()
+            // ===============================
+            // 2) REVENUE POR CIUDAD
+            // ===============================
+            let city = {};
+            df.forEach(d => {
+                city[d.City] = (city[d.City] || 0) + d.Total;
+            });
 
-fig.add_trace(
-    go.Scatter(
-        x=monthly.index,
-        y=monthly.values,
-        mode="lines+markers",
-        name="Monthly Sales"
-    ),
-    row=2, col=2
-)
+            Plotly.newPlot("chart2", [{
+                type: "bar",
+                x: Object.keys(city),
+                y: Object.values(city)
+            }], {
+                title: "Facturación por Ciudad"
+            });
 
-# ============================
-# 5) AJUSTES FINALES
-# ============================
-fig.update_layout(
-    height=800,
-    width=1200,
-    title="Dashboard - Supermarket Sales",
-    showlegend=False
-)
+            // ===============================
+            // 3) TICKET PROMEDIO
+            // ===============================
+            const avg = df.reduce((a, b) => a + b.Total, 0) / df.length;
 
-# ============================
-# 6) EXPORTACIÓN A HTML
-# ============================
-fig.write_html("dashboard_supermarket_sales.html")
+            Plotly.newPlot("chart3", [{
+                type: "indicator",
+                mode: "number",
+                value: avg,
+                title: { text: "Ticket Promedio" }
+            }]);
 
-print("✔ Dashboard generado: dashboard_supermarket_sales.html")
+            // ===============================
+            // 4) CURVA MENSUAL
+            // ===============================
+            let monthly = {};
+
+            df.forEach(d => {
+                const ym = d.Date.getFullYear() + "-" + (String(d.Date.getMonth()+1).padStart(2,"0"));
+                monthly[ym] = (monthly[ym] || 0) + d.Total;
+            });
+
+            const months = Object.keys(monthly).sort();
+
+            Plotly.newPlot("chart4", [{
+                type: "scatter",
+                mode: "lines+markers",
+                x: months,
+                y: months.map(m => monthly[m])
+            }], {
+                title: "Curva Mensual de Ventas"
+            });
+
+        });
+    </script>
+
+</body>
+</html>
