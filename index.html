@@ -18,6 +18,34 @@
         h1 {
             text-align: center;
         }
+        .filters-container {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .filter-group label {
+            font-weight: bold;
+            font-size: 14px;
+            color: #333;
+        }
+        .filter-group select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
         .chart-container {
             background: white;
             padding: 20px;
@@ -31,6 +59,28 @@
 <body>
 
     <h1>Dashboard — Supermarket Sales</h1>
+
+    <!-- Filtros -->
+    <div class="filters-container">
+        <div class="filter-group">
+            <label for="productLineFilter">Product Line:</label>
+            <select id="productLineFilter">
+                <option value="">Todos</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="cityFilter">City:</label>
+            <select id="cityFilter">
+                <option value="">Todos</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="genderFilter">Gender:</label>
+            <select id="genderFilter">
+                <option value="">Todos</option>
+            </select>
+        </div>
+    </div>
 
     <!-- Contenedores de gráficos -->
     <div class="chart-container"><div id="chart1"></div></div>
@@ -61,72 +111,146 @@
             }));
 
             // ===============================
-            // 1) TOP 3 PRODUCT LINES
+            // LLENAR SELECTORES DE FILTROS
             // ===============================
-            let totals = {};
-            df.forEach(d => {
-                totals[d["Product line"]] = (totals[d["Product line"]] || 0) + d.Total;
+            const productLines = [...new Set(df.map(d => d["Product line"]))];
+            const cities = [...new Set(df.map(d => d.City))];
+            const genders = [...new Set(df.map(d => d.Gender))];
+
+            productLines.forEach(pl => {
+                const option = document.createElement("option");
+                option.value = pl;
+                option.textContent = pl;
+                document.getElementById("productLineFilter").appendChild(option);
             });
 
-            let sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 3);
-
-            Plotly.newPlot("chart1", [{
-                type: "bar",
-                x: sorted.map(d => d[0]),
-                y: sorted.map(d => d[1])
-            }], {
-                title: "Top 3 Product Lines"
+            cities.forEach(city => {
+                const option = document.createElement("option");
+                option.value = city;
+                option.textContent = city;
+                document.getElementById("cityFilter").appendChild(option);
             });
 
-            // ===============================
-            // 2) REVENUE POR CIUDAD
-            // ===============================
-            let city = {};
-            df.forEach(d => {
-                city[d.City] = (city[d.City] || 0) + d.Total;
-            });
-
-            Plotly.newPlot("chart2", [{
-                type: "bar",
-                x: Object.keys(city),
-                y: Object.values(city)
-            }], {
-                title: "Facturación por Ciudad"
+            genders.forEach(gender => {
+                const option = document.createElement("option");
+                option.value = gender;
+                option.textContent = gender;
+                document.getElementById("genderFilter").appendChild(option);
             });
 
             // ===============================
-            // 3) TICKET PROMEDIO
+            // FUNCIÓN PARA FILTRAR DATOS
             // ===============================
-            const avg = df.reduce((a, b) => a + b.Total, 0) / df.length;
+            function getFilteredData() {
+                const productLine = document.getElementById("productLineFilter").value;
+                const city = document.getElementById("cityFilter").value;
+                const gender = document.getElementById("genderFilter").value;
 
-            Plotly.newPlot("chart3", [{
-                type: "indicator",
-                mode: "number",
-                value: avg,
-                title: { text: "Ticket Promedio" }
-            }]);
+                return df.filter(d => {
+                    return (productLine === "" || d["Product line"] === productLine) &&
+                           (city === "" || d.City === city) &&
+                           (gender === "" || d.Gender === gender);
+                });
+            }
 
             // ===============================
-            // 4) CURVA MENSUAL
+            // FUNCIÓN PARA ACTUALIZAR GRÁFICOS
             // ===============================
-            let monthly = {};
+            function updateCharts() {
+                const filtered = getFilteredData();
 
-            df.forEach(d => {
-                const ym = d.Date.getFullYear() + "-" + (String(d.Date.getMonth()+1).padStart(2,"0"));
-                monthly[ym] = (monthly[ym] || 0) + d.Total;
-            });
+                if (filtered.length === 0) {
+                    alert("No hay datos para los filtros seleccionados");
+                    return;
+                }
 
-            const months = Object.keys(monthly).sort();
+                // ===============================
+                // 1) TOP 3 PRODUCT LINES
+                // ===============================
+                let totals = {};
+                filtered.forEach(d => {
+                    totals[d["Product line"]] = (totals[d["Product line"]] || 0) + d.Total;
+                });
 
-            Plotly.newPlot("chart4", [{
-                type: "scatter",
-                mode: "lines+markers",
-                x: months,
-                y: months.map(m => monthly[m])
-            }], {
-                title: "Curva Mensual de Ventas"
-            });
+                let sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
+                Plotly.newPlot("chart1", [{
+                    type: "bar",
+                    x: sorted.map(d => d[0]),
+                    y: sorted.map(d => d[1]),
+                    marker: { color: '#1f77b4' }
+                }], {
+                    title: "Top 3 Product Lines",
+                    xaxis: { title: "Product Line" },
+                    yaxis: { title: "Total Sales" }
+                });
+
+                // ===============================
+                // 2) REVENUE POR CIUDAD
+                // ===============================
+                let city = {};
+                filtered.forEach(d => {
+                    city[d.City] = (city[d.City] || 0) + d.Total;
+                });
+
+                Plotly.newPlot("chart2", [{
+                    type: "bar",
+                    x: Object.keys(city),
+                    y: Object.values(city),
+                    marker: { color: '#ff7f0e' }
+                }], {
+                    title: "Facturación por Ciudad",
+                    xaxis: { title: "City" },
+                    yaxis: { title: "Total Sales" }
+                });
+
+                // ===============================
+                // 3) TICKET PROMEDIO
+                // ===============================
+                const avg = filtered.reduce((a, b) => a + b.Total, 0) / filtered.length;
+
+                Plotly.newPlot("chart3", [{
+                    type: "indicator",
+                    mode: "number",
+                    value: avg.toFixed(2),
+                    title: { text: "Ticket Promedio" }
+                }]);
+
+                // ===============================
+                // 4) CURVA MENSUAL
+                // ===============================
+                let monthly = {};
+
+                filtered.forEach(d => {
+                    const ym = d.Date.getFullYear() + "-" + (String(d.Date.getMonth()+1).padStart(2,"0"));
+                    monthly[ym] = (monthly[ym] || 0) + d.Total;
+                });
+
+                const months = Object.keys(monthly).sort();
+
+                Plotly.newPlot("chart4", [{
+                    type: "scatter",
+                    mode: "lines+markers",
+                    x: months,
+                    y: months.map(m => monthly[m]),
+                    line: { color: '#2ca02c' },
+                    marker: { size: 8 }
+                }], {
+                    title: "Curva Mensual de Ventas",
+                    xaxis: { title: "Mes" },
+                    yaxis: { title: "Total Sales" }
+                });
+            }
+
+            // ===============================
+            // EVENT LISTENERS PARA FILTROS
+            // ===============================
+            document.getElementById("productLineFilter").addEventListener("change", updateCharts);
+            document.getElementById("cityFilter").addEventListener("change", updateCharts);
+            document.getElementById("genderFilter").addEventListener("change", updateCharts);
+
+            // Cargar gráficos iniciales
+            updateCharts();
         });
     </script>
 
