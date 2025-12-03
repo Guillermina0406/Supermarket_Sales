@@ -1,0 +1,117 @@
+import pandas as pd
+import plotly.express as px
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
+
+# ============================
+# 1) CARGA DEL DATASET
+# ============================
+df = pd.read_csv("supermarket_sales.csv")
+
+# ============================
+# 2) CONVERSIÓN DE FECHAS
+# ============================
+df["Date"] = pd.to_datetime(df["Date"])
+df["YearMonth"] = df["Date"].dt.to_period("M").astype(str)
+
+# ============================
+# 3) CONTROL DE NULOS
+# ============================
+print("Nulos por columna:")
+print(df.isnull().sum())
+
+# El dataset NO tiene nulos → resultado esperado: todo en 0
+
+# ============================
+# 4) CREACIÓN DEL DASHBOARD
+# ============================
+
+# Creamos un layout de 2 filas x 2 columnas
+fig = make_subplots(
+    rows=2, cols=2,
+    subplot_titles=(
+        "Top 3 Product Lines",
+        "Facturación por Ciudad",
+        "Ticket Promedio",
+        "Curva Mensual de Ventas"
+    )
+)
+
+# --------------------------
+# GRÁFICO 1 – TOP 3 PRODUCT LINES
+# --------------------------
+top3 = (
+    df.groupby("Product line")["Total"]
+    .sum()
+    .sort_values(ascending=False)
+    .head(3)
+)
+
+fig.add_trace(
+    go.Bar(
+        x=top3.index,
+        y=top3.values,
+        name="Top 3 Product Lines"
+    ),
+    row=1, col=1
+)
+
+# --------------------------
+# GRÁFICO 2 – FACTURACIÓN POR CIUDAD
+# --------------------------
+city_rev = df.groupby("City")["Total"].sum()
+
+fig.add_trace(
+    go.Bar(
+        x=city_rev.index,
+        y=city_rev.values,
+        name="Revenue by City"
+    ),
+    row=1, col=2
+)
+
+# --------------------------
+# GRÁFICO 3 – TICKET PROMEDIO
+# --------------------------
+avg_ticket = df["Total"].mean()
+
+fig.add_trace(
+    go.Indicator(
+        mode="number",
+        value=avg_ticket,
+        title={"text": "Ticket Promedio"}
+    ),
+    row=2, col=1
+)
+
+# --------------------------
+# GRÁFICO 4 – CURVA MENSUAL DE VENTAS
+# --------------------------
+monthly = df.groupby("YearMonth")["Total"].sum()
+
+fig.add_trace(
+    go.Scatter(
+        x=monthly.index,
+        y=monthly.values,
+        mode="lines+markers",
+        name="Monthly Sales"
+    ),
+    row=2, col=2
+)
+
+# ============================
+# 5) AJUSTES FINALES
+# ============================
+fig.update_layout(
+    height=800,
+    width=1200,
+    title="Dashboard - Supermarket Sales",
+    showlegend=False
+)
+
+# ============================
+# 6) EXPORTACIÓN A HTML
+# ============================
+fig.write_html("dashboard_supermarket_sales.html")
+
+print("✔ Dashboard generado: dashboard_supermarket_sales.html")
