@@ -82,6 +82,21 @@
         </div>
     </div>
 
+    <!-- Chat IA -->
+    <div class="chart-container">
+        <h2>Agente IA — Pregunta sobre el dataset</h2>
+        <div id="chat" style="max-height:300px; overflow:auto; padding:10px; border:1px solid #eee; border-radius:6px; background:#fafafa;"></div>
+        <div style="display:flex; gap:10px; margin-top:10px; align-items:center;">
+            <input id="userInput" type="text" placeholder="Escribe tu pregunta..." style="flex:1; padding:8px; border:1px solid #ddd; border-radius:5px;" />
+            <button id="sendBtn" style="padding:8px 12px;">Enviar</button>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+            <input id="useOpenAI" type="checkbox" /> <label for="useOpenAI">Usar OpenAI (vía proxy servidor)</label>
+            <input id="openaiKey" type="password" placeholder="(opcional, no necesario con proxy)" style="margin-left:8px; padding:6px; border:1px solid #ddd; border-radius:5px;" />
+        </div>
+        <div style="font-size:12px; color:#666; margin-top:6px;">Advertencia: insertar tu API key en el navegador la expone al cliente. Para producción, usar un proxy/servidor.</div>
+    </div>
+
     <!-- Contenedores de gráficos -->
     <div class="chart-container"><div id="chart1"></div></div>
     <div class="chart-container"><div id="chart2"></div></div>
@@ -269,6 +284,131 @@
 
             // Cargar gráficos iniciales
             updateCharts();
+
+            // ===============================
+            // Chat IA: resumen y manejo de preguntas
+            // ===============================
+            const chatDiv = document.getElementById("chat");
+            const userInput = document.getElementById("userInput");
+            const sendBtn = document.getElementById("sendBtn");
+            const useOpenAI = document.getElementById("useOpenAI");
+            const openaiKeyInput = document.getElementById("openaiKey");
+
+            function appendMessage(role, text) {
+                const p = document.createElement("div");
+                p.style.marginBottom = "8px";
+                if (role === "user") { p.innerHTML = `<b>Tú:</b> ${text}`; }
+                else p.innerHTML = `<b>IA:</b> ${text}`;
+                chatDiv.appendChild(p);
+                chatDiv.scrollTop = chatDiv.scrollHeight;
+            }
+
+            function summarizeDataset() {
+                const rows = df.length;
+                const totalRevenue = df.reduce((s,d)=>s + (isNaN(d.Total)?0:d.Total),0);
+                const avgTicket = (totalRevenue/rows) || 0;
+                const products = [...new Set(df.map(d=>d["Product line"]))];
+                const cities = [...new Set(df.map(d=>d.City))];
+                const genders = [...new Set(df.map(d=>d.Gender))];
+                const dateMin = new Date(Math.min(...df.map(d=>d.Date.getTime())));
+                const dateMax = new Date(Math.max(...df.map(d=>d.Date.getTime())));
+                return {
+                    rows, totalRevenue, avgTicket, products, cities, genders, dateMin, dateMax
+                };
+            }
+
+            const datasetSummary = summarizeDataset();
+
+            function answerFromLocal(question) {
+                const q = question.toLowerCase();
+                if (q.includes("filas") || q.includes("registros") || q.includes("rows")) {
+                    return `El dataset tiene ${datasetSummary.rows} filas (registros).`;
+                }
+                if (q.includes("total") || q.includes("ingreso") || q.includes("ventas totales") || q.includes("facturación")) {
+                    return `Ventas totales: ${datasetSummary.totalRevenue.toFixed(2)}`;
+                }
+                if (q.includes("promedio") || q.includes("ticket")) {
+                    return `Ticket promedio: ${datasetSummary.avgTicket.toFixed(2)}`;
+                }
+                if (q.includes("product") || q.includes("producto") || q.includes("line")) {
+                    return `Product lines (${datasetSummary.products.length}): ${datasetSummary.products.join(", ")}`;
+                }
+                if (q.includes("ciudad") || q.includes("city")) {
+                    return `Ciudades (${datasetSummary.cities.length}): ${datasetSummary.cities.join(", ")}`;
+                }
+                if (q.includes("gender") || q.includes("genero") || q.includes("género")) {
+                    return `Géneros en el dataset: ${datasetSummary.genders.join(", ")}`;
+                }
+                if (q.includes("rango") || q.includes("fechas") || q.includes("fecha")) {
+                    return `Rango de fechas: ${datasetSummary.dateMin.toISOString().slice(0,10)} a ${datasetSummary.dateMax.toISOString().slice(0,10)}`;
+                }
+                return null;
+            }
+
+            async function callOpenAI(question) {
+                // En este modo usamos el proxy servidor que expone /api/chat
+                const sample = df.slice(0,10).map(d => ({Date: d.Date.toISOString().slice(0,10), City: d.City, Product: d["Product line"], Quantity: d.Quantity, Total: d.Total, Gender: d.Gender, CustomerType: d["Customer type"]}));
+
+                const payload = {
+                    question,
+                    summary: {
+                        rows: datasetSummary.rows,
+                        totalRevenue: datasetSummary.totalRevenue,
+                        avgTicket: datasetSummary.avgTicket,
+                        products: datasetSummary.products,
+                        cities: datasetSummary.cities,
+                        genders: datasetSummary.genders,
+                        dateMin: datasetSummary.dateMin.toISOString().slice(0,10),
+                        dateMax: datasetSummary.dateMax.toISOString().slice(0,10)
+                    },
+                    sample
+                };
+
+                const resp = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!resp.ok) {
+                    const t = await resp.text();
+                    throw new Error(t || 'Error en la llamada al proxy');
+                }
+
+                const data = await resp.json();
+                return (data.reply || JSON.stringify(data)).trim();
+            }
+
+            async function handleQuestion(q) {
+                appendMessage("user", q);
+                appendMessage("ia", "Pensando...");
+
+                const local = answerFromLocal(q);
+                if (local && !useOpenAI.checked) {
+                    chatDiv.lastChild.remove();
+                    appendMessage("ia", local);
+                    return;
+                }
+
+                if (useOpenAI.checked) {
+                    try {
+                        const ans = await callOpenAI(q);
+                        chatDiv.lastChild.remove();
+                        appendMessage("ia", ans);
+                        return;
+                    } catch (e) {
+                        chatDiv.lastChild.remove();
+                        appendMessage("ia", `Error llamando OpenAI: ${e.message}`);
+                        return;
+                    }
+                }
+
+                chatDiv.lastChild.remove();
+                appendMessage("ia", "No puedo responder esa pregunta localmente. Marca 'Usar OpenAI' y provee una API key para respuestas más completas.");
+            }
+
+            sendBtn.addEventListener("click", ()=>{ const q = userInput.value.trim(); if (!q) return; userInput.value=''; handleQuestion(q); });
+            userInput.addEventListener("keydown", (e)=>{ if (e.key === 'Enter') { const q = userInput.value.trim(); if (!q) return; userInput.value=''; handleQuestion(q); } });
         });
     </script>
 
