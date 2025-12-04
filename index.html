@@ -87,6 +87,7 @@
     <div class="chart-container"><div id="chart2"></div></div>
     <div class="chart-container"><div id="chart3"></div></div>
     <div class="chart-container"><div id="chart4"></div></div>
+    <div class="chart-container"><div id="chart5"></div></div>
 
     <script>
         // ==========================
@@ -239,6 +240,23 @@
                     title: "Curva Mensual de Ventas",
                     xaxis: { title: "Mes" },
                     yaxis: { title: "Total Sales" }
+                });
+
+                // ===============================
+                // 5) TORTA DE CUSTOMER TYPE
+                // ===============================
+                let customerType = {};
+                filtered.forEach(d => {
+                    customerType[d["Customer type"]] = (customerType[d["Customer type"]] || 0) + parseFloat(d.Quantity);
+                });
+
+                Plotly.newPlot("chart5", [{
+                    type: "pie",
+                    labels: Object.keys(customerType),
+                    values: Object.values(customerType),
+                    marker: { colors: ['#d62728', '#9467bd'] }
+                }], {
+                    title: "Unidades Vendidas por Customer Type"
                 });
             }
 
